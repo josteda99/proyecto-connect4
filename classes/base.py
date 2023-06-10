@@ -46,6 +46,7 @@ class SMOTE():
         self.__random = np.random.default_rng(seed)
 
     def fit(self, feature_sample, class_sample=''):
+        self._columns_name = feature_sample.columns
         self.__features = feature_sample.drop(columns=class_sample).values
         target = feature_sample[[class_sample]].values  # Es necesario?
         classes, count = np.unique(target, return_counts=True)
@@ -74,8 +75,7 @@ class SMOTE():
                 N, feature_vector, knn)
             new_sample = np.append(new_sample, minority_value)
             synthetic.append(new_sample)
-        # TODO: convertir a pandas
-        return synthetic
+        return pd.DataFrame(synthetic, columns=self._columns_name)
 
     def __populate(self, N, feature_vector, knn):
         synthetic_sample = None
