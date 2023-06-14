@@ -8,8 +8,8 @@ class KNeighbors():
     def __init__(self, k_neighbors=3):
         self.__neighbors = k_neighbors
 
-    def __euclidian_distance(self, x, y):
-        return np.linalg.norm(x - y)
+    def __euclidian_distance(self, event, classes):
+        return np.linalg.norm(event - classes)
 
     def __predict(self, event):
         neighbors = self.k_neighbors(event)
@@ -39,16 +39,15 @@ class KNeighbors():
 
 class SMOTE():
 
-    def __init__(self, amount, seed=None, k_neighbors=5,):
+    def __init__(self, seed=None, k_neighbors=5,):
         self.__neighbors = k_neighbors
-        self.__amount = amount
         self.__k_nn = KNeighbors(self.__neighbors)
         self.__random = np.random.default_rng(seed)
 
     def fit(self, feature_sample, class_sample=''):
         self._columns_name = feature_sample.columns
         self.__features = feature_sample.drop(columns=class_sample).values
-        target = feature_sample[[class_sample]].values  # Es necesario?
+        target = feature_sample[[class_sample]].values
         classes, count = np.unique(target, return_counts=True)
         self.__classes = classes
         self.__count_class = count
@@ -58,32 +57,74 @@ class SMOTE():
                                                   == minority_value].drop(columns=class_sample).values
         self.__k_nn.fit(self.__features, target)
 
-    def resample(self):
+    def resample(self, amount):
         minority_value = self.__classes[self.__index_minority]
         t = self.__count_class[self.__index_minority]
-        N = self.__amount
-        if N < 100:
-            t = (N / 100) * t
-            N = 100
-            # TODO: tomar de manera aleatorea t datos de __features
-            # features_minority = ...
-        N = (int)(N / 100)
+        if amount < 100:
+            t = (np.int32)((amount / 100) * t)
+            amount = 100
+            features_minority = self.__random.choice(
+                self.__features_minority, size=t, replace=False)
+        ratio = (np.int32)(amount / 100)
         synthetic = []
-        for feature_vector in self.__features_minority:
+        for feature_vector in features_minority:
             knn = self.__k_nn.k_neighbors(feature_vector)
             new_sample = self.__populate(
-                N, feature_vector, knn)
+                amount, feature_vector, knn)
             new_sample = np.append(new_sample, minority_value)
             synthetic.append(new_sample)
         return pd.DataFrame(synthetic, columns=self._columns_name)
 
-    def __populate(self, N, feature_vector, knn):
+    def __populate(self, ratio, feature_vector, knn):
         synthetic_sample = None
-        while N != 0:
+        while ratio != 0:
             neighbor_index = self.__random.integers(len(knn), size=1)
             neighbor = self.__features[knn[neighbor_index[0]]]
             diff = neighbor - feature_vector
             gap = self.__random.random()
             synthetic_sample = np.round((feature_vector + (diff * gap)), 3)
-            N -= 1
+            ratio -= 1
         return synthetic_sample
+
+
+class NaiveBayes:
+
+    def fit(self, features, classes):
+        n_samples, n_features = features.shape
+        self._classes = np.unique(classes)
+        n_classes = len(self._classes)
+
+        # calculate mean, var, and prior for each class
+        self._mean = np.zeros((n_classes, n_features), dtype=np.float64)
+        self._var = np.zeros((n_classes, n_features), dtype=np.float64)
+        self._priors = np.zeros(n_classes, dtype=np.float64)
+
+        for idx, c in enumerate(self._classes):
+            features_c = features[classes == c]
+            self._mean[idx, :] = features_c.mean(axis=0)
+            self._var[idx, :] = features_c.var(axis=0)
+            self._priors[idx] = features_c.shape[0] / float(n_samples)
+
+    def predict(self, features):
+        y_pred = [self._predict(event) for event in features]
+        return np.array(y_pred)
+
+    def _predict(self, event):
+        posteriors = []
+
+        # calculate posterior probability for each class
+        for idx, c in enumerate(self._classes):
+            prior = np.log(self._priors[idx])
+            posterior = np.sum(np.log(self._pdf(idx, event)))
+            posterior = posterior + prior
+            posteriors.append(posterior)
+
+        # return class with the highest posterior
+        return self._classes[np.argmax(posteriors)]
+
+    def _pdf(self, class_idx, event):
+        mean = self._mean[class_idx]
+        var = self._var[class_idx]
+        numerator = np.exp(-((event - mean) ** 2) / (2 * var))
+        denominator = np.sqrt(2 * np.pi * var)
+        return numerator / denominator
