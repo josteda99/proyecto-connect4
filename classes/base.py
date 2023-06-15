@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 from collections import Counter
+from sklearn.metrics import f1_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 
 class KNeighbors():
@@ -30,10 +32,11 @@ class KNeighbors():
     def fit(self, feature_sample, class_sample):
         self._features_train = feature_sample
         self._class_train = class_sample
+        return self
 
     def predict(self, features_predict):
         predictions = [self.__predict(
-            features_data for features_data in features_predict)]
+            features_data) for features_data in features_predict]
         return np.array(predictions)
 
 
@@ -104,6 +107,7 @@ class NaiveBayes:
             self._mean[idx, :] = features_c.mean(axis=0)
             self._var[idx, :] = features_c.var(axis=0)
             self._priors[idx] = features_c.shape[0] / float(n_samples)
+        return self
 
     def predict(self, features):
         y_pred = [self._predict(event) for event in features]
@@ -128,3 +132,40 @@ class NaiveBayes:
         numerator = np.exp(-((event - mean) ** 2) / (2 * var))
         denominator = np.sqrt(2 * np.pi * var)
         return numerator / denominator
+
+
+class VIF():
+    def __init__(self, n_features):
+        self.n_features = n_features
+
+    def fit(self, feature_sample, target):
+        self._target = target
+        self._feature = feature_sample
+        self.__features_names = feature_sample.columns
+
+    def transform(self, *models, test_features=None, test_target=None):
+        models_scores = {}
+        models_names = [model.__class__.__name__ for model in models]
+        for model, name in zip(models, models_names):
+            model.fit(self._feature.values, target=self._target.values).predict(
+                test_features.values)
+            models_scores[name] = []
+        drop_feat = []
+        while len(self.__features_names) - len(drop_feat) != self.n_features:
+            selected_features = self._feature.drop(drop_feat, axis=1)
+            selected_features_name = selected_features.columns.values
+            vif_values = [variance_inflation_factor(
+                selected_features.values, index_feat) for index_feat in len(selected_features.shape[1])]
+            index_sorted_vif = np.argsort(
+                np.round(vif_values, 2), kind='quicksort')
+            drop_feat.append(selected_features_name[index_sorted_vif[-1]])
+            if vif_values[index_sorted_vif[-1]] > 1:
+                for model, name in zip(models, models_names):
+                    models_scores[name].append(
+                        f1_score(
+                            test_target,
+                            model.fit(selected_features.values, self._target).predict(
+                                test_features.drop(drop_feat, axis=1).values),
+                            average='weighted') * 100)
+
+        return self._feature.drop(drop_feat, axis=1), models_scores
