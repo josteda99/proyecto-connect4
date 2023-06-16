@@ -149,8 +149,7 @@ class VIF():
         models_scores = {}
         models_names = [model.__class__.__name__ for model in models]
         for model, name in zip(models, models_names):
-            model.fit(self._feature.values, self._target.values).predict(
-                test_features.values)
+            model.fit(self._feature.values, self._target.values)
             models_scores[name] = []
         drop_feat = []
         while len(self.__features_names) - len(drop_feat) != self.n_features:
@@ -158,8 +157,8 @@ class VIF():
             selected_features_name = selected_features.columns.values
             vif_values = [variance_inflation_factor(
                 selected_features.values, index_feat) for index_feat in range(selected_features.shape[1])]
-            index_sorted_vif = np.argsort(
-                np.round(vif_values, 2), kind='quicksort')
+            vif_values = np.round(vif_values, 2)
+            index_sorted_vif = np.argsort(vif_values, kind='quicksort')
             if vif_values[index_sorted_vif[-1]] > 1:
                 for model, name in zip(models, models_names):
                     models_scores[name].append(
