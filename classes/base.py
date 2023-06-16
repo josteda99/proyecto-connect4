@@ -90,7 +90,7 @@ class SMOTE():
         return synthetic_sample
 
 
-class NaiveBayes:
+class NaiveBayes():
 
     def fit(self, features, classes):
         n_samples, n_features = features.shape
@@ -135,7 +135,7 @@ class NaiveBayes:
 
 
 class VIF():
-    def __init__(self, n_features):
+    def __init__(self, n_features=-1):
         self.n_features = n_features
 
     def fit(self, feature_sample, target):
@@ -144,10 +144,12 @@ class VIF():
         self.__features_names = feature_sample.columns
 
     def transform(self, *models, test_features=None, test_target=None):
+        if self.n_features == -1:
+            self.n_features = 1
         models_scores = {}
         models_names = [model.__class__.__name__ for model in models]
         for model, name in zip(models, models_names):
-            model.fit(self._feature.values, target=self._target.values).predict(
+            model.fit(self._feature.values, self._target.values).predict(
                 test_features.values)
             models_scores[name] = []
         drop_feat = []
@@ -155,17 +157,17 @@ class VIF():
             selected_features = self._feature.drop(drop_feat, axis=1)
             selected_features_name = selected_features.columns.values
             vif_values = [variance_inflation_factor(
-                selected_features.values, index_feat) for index_feat in len(selected_features.shape[1])]
+                selected_features.values, index_feat) for index_feat in range(selected_features.shape[1])]
             index_sorted_vif = np.argsort(
                 np.round(vif_values, 2), kind='quicksort')
-            drop_feat.append(selected_features_name[index_sorted_vif[-1]])
             if vif_values[index_sorted_vif[-1]] > 1:
                 for model, name in zip(models, models_names):
                     models_scores[name].append(
                         f1_score(
                             test_target,
-                            model.fit(selected_features.values, self._target).predict(
+                            model.fit(selected_features.values, self._target.values).predict(
                                 test_features.drop(drop_feat, axis=1).values),
                             average='weighted') * 100)
+            drop_feat.append(selected_features_name[index_sorted_vif[-1]])
 
         return self._feature.drop(drop_feat, axis=1), models_scores
