@@ -176,101 +176,71 @@ class DecisionTreeClassifier:
     def __init__(self):
         self.tree = None
 
-    def fit(self, X, y):
-        data = np.concatenate((X, y.reshape(-1, 1)), axis=1)
-        self.tree = self.build_tree(data)
+    def entropy(y):
+        classes, counts = np.unique(y, return_counts=True)
+        probabilities = counts / len(y)
+        entropy = -np.sum(probabilities * np.log2(probabilities))
+        return entropy
 
-    def predict(self, X):
-        predictions = []
-        for sample in X:
-            prediction = self.traverse_tree(sample, self.tree)
-            predictions.append(prediction)
-        return np.array(predictions)
+    def find_best_split(self, X, y):
+        best_feature_index = None
+        best_threshold = None
+        best_gain = -np.inf
+        initial_entropy = entropy(y)
 
-    def build_tree(self, data):
-        if self.is_pure(data[:, -1]):
-            return self.create_leaf_node(data[:, -1])
+        for feature_index in range(X.shape[1]):
+            feature_values = X[:, feature_index]
+            thresholds = np.unique(feature_values)
 
-        best_split = self.get_best_split(data)
-        if best_split is None:
-            return self.create_leaf_node(data[:, -1])
+            for threshold in thresholds:
+                left_indices = feature_values <= threshold
+                right_indices = feature_values > threshold
 
-        left_child = self.build_tree(best_split['left_data'])
-        right_child = self.build_tree(best_split['right_data'])
+                left_entropy = entropy(y[left_indices])
+                right_entropy = entropy(y[right_indices])
 
-        return {
-            'feature_index': best_split['feature_index'],
-            'threshold': best_split['threshold'],
-            'left_child': left_child,
-            'right_child': right_child
-        }
+                information_gain = initial_entropy - \
+                    (left_entropy * np.sum(left_indices) +
+                     right_entropy * np.sum(right_indices)) / len(y)
 
-    def get_best_split(self, data):
-        best_split = None
-        best_gini = 1.0
+                if information_gain > best_gain:
+                    best_gain = information_gain
+                    best_feature_index = feature_index
+                    best_threshold = threshold
 
-        n_features = data.shape[1] - 1
-        for feature_index in range(n_features):
-            feature_values = data[:, feature_index]
-            unique_values = np.unique(feature_values)
-            for threshold in unique_values:
-                left_data, right_data = self.split_data(
-                    data, feature_index, threshold)
-                if len(left_data) == 0 or len(right_data) == 0:
-                    continue
+        return best_feature_index, best_threshold
 
-                gini = self.calculate_gini_index(
-                    left_data[:, -1], right_data[:, -1])
-                if gini < best_gini:
-                    best_gini = gini
-                    best_split = {
-                        'feature_index': feature_index,
-                        'threshold': threshold,
-                        'left_data': left_data,
-                        'right_data': right_data
-                    }
+    def build_decision_tree(self, X, y, max_depth):
+        if len(np.unique(y)) == 1:
+            # Si todas las instancias tienen la misma clase, retornar un nodo hoja
+            return {'class': y[0]}
 
-        return best_split
+        if X.shape[1] == 0 or max_depth == 0:
+            # Si no quedan características para dividir o se alcanza la profundidad máxima, retornar un nodo hoja con la clase mayoritaria
+            classes, counts = np.unique(y, return_counts=True)
+            majority_class = classes[np.argmax(counts)]
+            return {'class': majority_class}
 
-    def split_data(self, data, feature_index, threshold):
-        left_mask = data[:, feature_index] <= threshold
-        right_mask = ~left_mask
-        left_data = data[left_mask]
-        right_data = data[right_mask]
-        return left_data, right_data
+        best_feature_index, best_threshold = find_best_split(X, y)
 
-    def calculate_gini_index(self, left_labels, right_labels):
-        n_left = len(left_labels)
-        n_right = len(right_labels)
-        n_total = n_left + n_right
+        left_indices = X[:, best_feature_index] <= best_threshold
+        right_indices = X[:, best_feature_index] > best_threshold
 
-        gini_left = 1.0 - np.sum(np.square(np.bincount(left_labels)) / n_left)
-        gini_right = 1.0 - \
-            np.sum(np.square(np.bincount(right_labels)) / n_right)
+        left_subtree = build_decision_tree(
+            X[left_indices], y[left_indices], max_depth - 1)
+        right_subtree = build_decision_tree(
+            X[right_indices], y[right_indices], max_depth - 1)
 
-        gini_index = (n_left / n_total) * gini_left + \
-            (n_right / n_total) * gini_right
-        return gini_index
+        return {'feature_index': best_feature_index, 'threshold': best_threshold,
+                'left_subtree': left_subtree, 'right_subtree': right_subtree}
 
-    def create_leaf_node(self, labels):
-        return {'class': np.argmax(np.bincount(labels))}
+    def predict(self, instance, tree):
+        if 'class' in tree:
+            return tree['class']
 
-    def traverse_tree(self, sample, node):
-        if 'class' in node:
-            return node['class']
-        if sample[node['feature_index']] <= node['threshold']:
-            return self.traverse_tree(sample, node['left_child'])
+        feature_value = instance[tree['feature_index']]
+
+        if feature_value <= tree['threshold']:
+            return predict(instance, tree['left_subtree'])
         else:
-            return self.traverse_tree(sample, node['right_child'])
-
-# # Ejemplo de uso
-# X_train = np.array([[1, 2], [3, 4], [5, 6], [7, 8]])
-# y_train = np.array([0, 0, 1, 1])
-
-# X_test = np.array([[2, 3], [6, 7]])
-
-# clf = DecisionTreeClassifier()
-# clf.fit(X_train, y_train)
-# predictions = clf.predict(X_test)
-
-# print(predictions)
+            return predict(instance, tree['right_subtree'])
